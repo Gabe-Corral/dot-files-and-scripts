@@ -1,54 +1,55 @@
+#!/usr/bin/env python3
 from pytube import Playlist
 import subprocess
 import os
 import glob
 import eyed3
 import re
+import argparse
 
-class YTEcoder:
-    def __init__(self, url):
-        self.download_dir = '/home/gabe/Downloads/Frailty/'
-        self.playlist = Playlist(url)
-        self.videos = self.playlist.videos
-        self.playlist._video_regex = re.compile(r"\"url\":\"(/watch\?v=[\w-]*)")
-        self.artist = "dltzk"
-        self.album = "Frailty"
 
-    def download_files(self):
-        for video in self.videos:
-            audioStream = video.streams.get_by_itag('140')
-            audioStream.download(output_path=self.download_dir)
+def fold_name(album):
+    return "".join([i.replace(" ", "-") for i in album]) 
 
-    def show_titles(self):
-        return {i+1: v.title for i,v in enumerate(self.videos)}
 
-    def convert_mp3(self):
-        for file in self.show_titles().values():
-            file = f"{self.download_dir}{file}"
-            print(f'{file}.mp4')
-            subprocess.call(['ffmpeg', '-i', f'{file}.mp4',
-                            f'{file}.mp3'])
+def download_videos(url, album):
+    videos = []
+    path = fold_name(album)
+    os.mkdir(path)
+    for i,v in enumerate(Playlist(url).videos):
+        v.streams.get_by_itag('140').download(path)
+        videos.append((v.title, i+1))
+    return videos
 
-    def remove_mp4_files(self):
-        for file in glob.glob(self.download_dir+"*.mp4"):
-            os.remove(file)
 
-    def encode_files(self):
-        for k,v in self.show_titles().items():
-            file = f"{self.download_dir}{v}.mp3"
-            song = eyed3.load(file).tag
-            song.artist = self.artist
-            song.album = self.album
-            song.track_num = k
-            song.title = v
-            song.save()
+def convert_to_mp3(videos, album):
+    for v in videos:
+        mp4 = f"{fold_name(album)}/{v[0]}.mp4"
+        mp3 = f"{fold_name(album)}/{v[0]}.mp3"
+        subprocess.call(["ffmpeg", "-i", mp4, mp3])
+        os.remove(mp4)
 
-    def main(self):
-        self.download_files()
-        #self.encode_files()
-        #self.convert_mp3()
-        #self.remove_mp4_files()
 
-if __name__=='__main__':
-    yt = YTEcoder("https://www.youtube.com/watch?v=CVEkYvkJN5A&list=PLGOxRA_tU285lBasd5KCnnrUDsE7jWnYB")
-    yt.main()
+def encode_files(artist, album, files):
+    for f in files:
+        song = eyed3.load(f"{fold_name(album)}/{f[0]}.mp3").tag
+        song.artist = artist
+        song.album = album
+        song.title = f[0]
+        song.track_num = f[1]
+        song.save()
+    
+        
+def main(artist, album, url):
+    videos = download_videos(url, album)
+    convert_to_mp3(videos, album)
+    encode_files(artist, album, videos)
+
+
+if __name__=="__main__":
+    parser = argparse.ArgumentParser(description='Download YT playlists.')
+    parser.add_argument('artist', type=str, help='Artist name.')
+    parser.add_argument('album', type=str, help='Album name.')
+    parser.add_argument('url', type=str, help='URL')
+    args = parser.parse_args()
+    main(args.artist, args.album, args.url)
